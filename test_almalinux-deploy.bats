@@ -1,10 +1,11 @@
-source almalinux-deploy.sh
+#!/usr/bin/env bats
+source almalinux-deploy.sh -t
 
 
 setup() {
     if [[ ${BATS_TEST_DESCRIPTION} =~ 'get_os_release_var' ]] \
        || [[ ${BATS_TEST_DESCRIPTION} =~ 'get_os_version' ]]; then
-        MOCKED_OS_RELEASE=$(tempfile -d ${BATS_TMPDIR} -p osrel_)
+        MOCKED_OS_RELEASE=$(mktemp -p ${BATS_TMPDIR} osrel_XXXX )
     fi
 }
 
@@ -46,19 +47,23 @@ teardown() {
 }
 
 @test 'assert_secureboot_disabled fails on enabled Secure Boot' {
-    function dmesg() {
-        echo '[    0.000000] secureboot: Secure boot enabled'
+    function mokutil() {
+        case "$1" in
+            '--sb-state' ) echo 'SecureBoot enabled' ;;
+        esac
     }
-    export -f dmesg
+    export -f mokutil
     run assert_secureboot_disabled
     [[ ${status} -ne 0 ]]
 }
 
 @test 'assert_secureboot_disabled passes on disabled Secure Boot' {
-    function dmesg() {
-        echo '[    0.000000] secureboot: Secure boot disabled'
+    function mokutil() {
+        case "$1" in
+            '--sb-state' ) echo 'SecureBoot disabled' ;;
+        esac
     }
-    export -f dmesg
+    export -f mokutil
     run assert_secureboot_disabled
     [[ ${status} -eq 0 ]]
 }
@@ -105,7 +110,7 @@ teardown() {
 }
 
 @test 'assert_supported_system fails on unsupported architectures' {
-    for arch in 'i686' 'aarch64' 'armv7l'; do
+    for arch in 'i686' 'ppc64le' 'armv7l'; do
         run assert_supported_system 'centos' '8' "${arch}"
         [[ ${status} -ne 0 ]]
         [[ ${output} =~ 'ERROR' ]]
@@ -120,8 +125,8 @@ teardown() {
     done
 }
 
-@test 'assert_supported_system fails on non-centos' {
-    for os_id in 'fedora' 'ol' 'rhel'; do
+@test 'assert_supported_system fails on unsupported distributions' {
+    for os_id in 'fedora' 'virtuozzo'; do
         run assert_supported_system "${os_id}" '8' 'x86_64'
         [[ ${status} -ne 0 ]]
         [[ ${output} =~ 'ERROR' ]]
