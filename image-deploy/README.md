@@ -7,7 +7,7 @@ https://www.blueonyx.it/news/283/15/OpenVZ-7-AlmaLinux-OS-template-cache
 
 Deploy on your node:
 
-cd ~/
+# cd ~/;
 
 # yum -y install p7zip.x86_64 git;
 
