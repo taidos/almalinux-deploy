@@ -9,16 +9,16 @@ Deploy on your node:
 
 cd ~/
 
-yum -y install p7zip.x86_64
+#yum -y install p7zip.x86_64 git;
 
-git clone https://github.com/taidos/almalinux-deploy.git
+#git clone https://github.com/taidos/almalinux-deploy.git;
 
-rpm -Uvh ~/almalinux-deploy/image-deploy//almalinux-8-x86_64-ez-1.0.0-1BX01.vl7.noarch.rpm
+#rpm -Uvh ~/almalinux-deploy/image-deploy//almalinux-8-x86_64-ez-1.0.0-1BX01.vl7.noarch.rpm;
 
-cd ~/almalinux-deploy/image-deploy/
+#cd ~/almalinux-deploy/image-deploy/;
 
-7za -y x "almalinux-8-x86_64.tar.7z.*"
+#7za -y x "almalinux-8-x86_64.tar.7z.*";
 
-mv almalinux-8-x86_64.tar.gz /vz/template/cache
+#mv almalinux-8-x86_64.tar.gz /vz/template/cache;
 
-rf -rf ~/almalinux-deploy
+#rf -rf ~/almalinux-deploy;
