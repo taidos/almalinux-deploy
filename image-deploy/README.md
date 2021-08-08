@@ -13,7 +13,7 @@ yum -y install p7zip.x86_64
 
 git clone https://github.com/taidos/almalinux-deploy.git
 
-rpm -Uvh ~/image-deploy/almalinux-8-x86_64-ez-1.0.0-1BX01.vl7.noarch.rpm
+rpm -Uvh ~/almalinux-deploy/image-deploy//almalinux-8-x86_64-ez-1.0.0-1BX01.vl7.noarch.rpm
 
 cd ~/almalinux-deploy/image-deploy/
 
