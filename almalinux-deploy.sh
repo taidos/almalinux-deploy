@@ -16,8 +16,8 @@ ALT_ADM_DIR="/var/lib/alternatives"
 BAK_DIR="/tmp/alternatives_backup"
 ALT_DIR="/etc/alternatives"
 
-# AlmaLinux OS 8.3
-MINIMAL_SUPPORTED_VERSION='8.3'
+# AlmaLinux OS 8.5
+MINIMAL_SUPPORTED_VERSION='8.4'
 VERSION='0.1.12'
 
 BRANDING_PKGS=("centos-backgrounds" "centos-logos" "centos-indexhtml" \
@@ -36,7 +36,11 @@ REMOVE_PKGS=("centos-linux-release" "centos-gpg-keys" "centos-linux-repos" \
                 "oraclelinux-release" "oraclelinux-release-el8" \
                 "redhat-release" "redhat-release-eula" \
                 "rocky-release" "rocky-gpg-keys" "rocky-repos" \
-                "rocky-obsolete-packages")
+                "rocky-obsolete-packages" "libblockdev-btrfs")
+
+module_list_enabled=""
+module_list_installed=""
+is_container=0
 
 setup_log_files() {
     exec > >(tee /var/log/almalinux-deploy.log)
@@ -115,6 +119,7 @@ show_usage() {
     echo -e 'Migrates an EL system to AlmaLinux\n'
     echo -e 'Usage: almalinux-deploy.sh [OPTION]...\n'
     echo '  -h, --help           show this message and exit'
+    echo '  -f, --full           perform yum upgrade to 8.5 if necessary'
     echo '  -v, --version        print version information and exit'
 }
 
@@ -269,6 +274,18 @@ EOF
     save_status_of_stage "assert_supported_panel"
 }
 
+assert_supported_filesystem() {
+    if get_status_of_stage "assert_supported_filesystem"; then
+        return 0
+    fi
+    local result
+    if result=$(df -Th | awk '{print $2}' | grep btrfs); then
+        report_step_error "${result} is not supported filesystem"
+        exit 1
+    fi
+    save_status_of_stage "assert_supported_filesystem"
+}
+
 # Returns a latest almalinux-release RPM package download URL.
 #
 # $1 - AlmaLinux major version (e.g. 8).
@@ -335,6 +352,32 @@ assert_valid_package() {
         exit 1
     fi
     report_step_done 'Verify almalinux-release package'
+}
+
+#
+# Perform dnf upgrade (and fix repos since CentOS mirrorlist is offline as of 2022-01-31)
+#
+dnf_upgrade() {
+    local -r step='Fix DNF repositories to live mirror and run dnf upgrade -y'
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[baseos\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/BaseOS/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-BaseOS.repo
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[appstream\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/AppStream/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-AppStream.repo
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[cr\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/ContinuousRelease/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-ContinuousRelease.repo
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[devel\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/Devel/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-Devel.repo
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[extras\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/extras/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-Extras.repo
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[fasttrack\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/fasttrack/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-FastTrack.repo
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[ha\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/HighAvailability/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-HighAvailability.repo
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[plus\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/centosplus/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-Plus.repo
+    sed -i -e "/mirrorlist=http:\/\/mirrorlist.centos.org\/?release=\$releasever&arch=\$basearch&repo=/ s/^#*/#/" -e "/baseurl=http:\/\/mirror.centos.org\/\$contentdir\/\$releasever\// s/^#*/#/" -e "/^\[powertools\]/a baseurl=https://mirror.rackspace.com/centos-vault/8.5.2111/PowerTools/\$basearch/os" /etc/yum.repos.d/CentOS-Linux-PowerTools.repo
+    dnf upgrade -y || {
+        ret_code=${?}
+        if [[ ${ret_code} -ne 0 ]]; then
+            report_step_error "${step}. Exit code: ${ret_code}"
+            exit ${ret_code}
+        fi
+    }
+    # Make sure RPM DB is clean for gpg key installation in a subsequent step
+    dnf clean dbcache
+    report_step_done 'DNF upgrade'
 }
 
 # Terminates the program if OS version doesn't match AlmaLinux version.
@@ -495,6 +538,18 @@ migrate_from_centos() {
     save_status_of_stage "migrate_from_centos"
 }
 
+# Reset modules stream ol8 for OracleLinux
+reset_wrong_module_streams() {
+    module_list_enabled=$(dnf -e 1 module list --enabled | awk '$2 == "ol8" {printf $1" "}')
+    module_list_installed=$(dnf -e 1 module list --installed | awk '$2 == "ol8" {printf $1" "}')
+    if [ -n "${module_list_enabled}" ]; then
+        # shellcheck disable=SC2086
+        dnf module reset -y ${module_list_enabled}
+        echo "reset modules: ${module_list_enabled}"
+        report_step_done "Reset modules"
+    fi
+}
+
 # Executes the 'dnf distro-sync -y' command.
 #
 distro_sync() {
@@ -504,6 +559,7 @@ distro_sync() {
     local -r step='Run dnf distro-sync -y'
     local ret_code=0
     local dnf_repos="--enablerepo=powertools"
+    local exclude_pkgs="--exclude="
     # create needed repo
     if [ "${panel_type}" == "plesk" ]; then
         plesk installer --select-release-current --show-components --skip-cleanup
@@ -516,7 +572,11 @@ distro_sync() {
             exit ${ret_code}
         fi
     }
-    dnf distro-sync -y "${dnf_repos}" || {
+    # check if we inside lxc container
+    if [ $is_container -eq 1 ]; then
+        exclude_pkgs+="filesystem*,grub*"
+    fi
+    dnf distro-sync -y "${dnf_repos}" "${exclude_pkgs}" || {
         ret_code=${?}
         report_step_error "${step}. Exit code: ${ret_code}"
         exit ${ret_code}
@@ -527,6 +587,26 @@ distro_sync() {
     fi
     report_step_done "${step}"
     save_status_of_stage "distro_sync"
+}
+
+# Enable reseted modules with new stream rhel8
+restore_module_streams() {
+    if [ -n "${module_list_enabled}" ]; then
+        # shellcheck disable=SC2001,2086
+        module_enabled_rhel=$(echo ${module_list_enabled} | sed -e 's# #:rhel8 #g')
+        # shellcheck disable=SC2086
+        dnf module enable -y ${module_enabled_rhel}
+        echo "re-enabled modules: ${module_enabled_rhel}"
+        report_step_done "Enable modules"
+    fi
+    if [ -n "${module_list_installed}" ]; then
+        # shellcheck disable=SC2001,2086
+        module_installed_rhel=$(echo ${module_list_installed} | sed -e 's# #:rhel8 #g')
+        # shellcheck disable=SC2086
+        dnf module install -y ${module_installed_rhel}
+        echo "installed modules: ${module_installed_rhel}"
+        report_step_done "Install modules"
+    fi
 }
 
 install_kernel() {
@@ -747,12 +827,48 @@ add_efi_boot_record() {
     local device
     local disk_name
     local disk_num
+    local soft_dev1
+    local soft_dev2
+    local disk_name1
+    local disk_name2
+    local disk_num1
+    local disk_num2
+    local arch
+    arch="$(get_system_arch)"
     device="$(df -T /boot/efi | sed -n 2p | awk '{ print $1}')"
-    disk_name="$(echo "${device}" | sed -re 's/(p|)[0-9]$//g')"
-    disk_num="$(echo "${device}" | tail -c 2|sed 's|[^0-9]||g')"
-    efibootmgr -c -L "AlmaLinux" -l "\EFI\almalinux\shimx64.efi" -d "${disk_name}" -p "${disk_num}"
-    report_step_done "The new EFI boot record for AlmaLinux is added"
-    save_status_of_stage "add_efi_boot_record"
+
+    if [[ $device == *"/dev/md"* ]]; then
+        echo "ESP Partition on software raid detected:"
+        soft_dev1="$(lsblk -f -l -p | grep boot_efi |sed -n 1p | awk '{ print $1}')"
+        soft_dev2="$(lsblk -f -l -p | grep boot_efi |sed -n 2p | awk '{ print $1}')"
+        echo "$soft_dev1"
+        echo "$soft_dev2"
+        disk_name1="$(echo "${soft_dev1}" | sed -re 's/(p|)[0-9]$//g')"
+        disk_name2="$(echo "${soft_dev2}" | sed -re 's/(p|)[0-9]$//g')"
+        disk_num1="$(echo "${soft_dev1}" | tail -c 2|sed 's|[^0-9]||g')"
+        disk_num2="$(echo "${soft_dev2}" | tail -c 2|sed 's|[^0-9]||g')"
+    else
+        disk_name="$(echo "${device}" | sed -re 's/(p|)[0-9]$//g')"
+        disk_num="$(echo "${device}" | tail -c 2|sed 's|[^0-9]||g')"
+    fi
+
+    if [[ ${arch} == "x86_64" && $device == *"/dev/md"* ]]; then
+        efibootmgr -c -L "AlmaLinux" -l "\EFI\almalinux\shimx64.efi" -d "${disk_name1}" -p "${disk_num1}"
+        efibootmgr -c -L "AlmaLinux" -l "\EFI\almalinux\shimx64.efi" -d "${disk_name2}" -p "${disk_num2}"
+
+    elif [[ ${arch} == "aarch64" && $device == *"/dev/md"* ]]; then
+    	  efibootmgr -c -L "AlmaLinux" -l "\EFI\almalinux\shimaa64.efi" -d "${disk_name1}" -p "${disk_num1}"
+        efibootmgr -c -L "AlmaLinux" -l "\EFI\almalinux\shimaa64.efi" -d "${disk_name2}" -p "${disk_num2}"
+
+    elif [[ ${arch} == "x86_64" ]]; then
+        efibootmgr -c -L "AlmaLinux" -l "\EFI\almalinux\shimx64.efi" -d "${disk_name}" -p "${disk_num}"
+
+    elif [[ ${arch} == "aarch64" ]]; then
+        efibootmgr -c -L "AlmaLinux" -l "\EFI\almalinux\shimaa64.efi" -d "${disk_name}" -p "${disk_num}"
+
+    fi
+        report_step_done "The new EFI boot record for AlmaLinux is added"
+        save_status_of_stage "add_efi_boot_record"
 }
 
 
@@ -770,7 +886,7 @@ reinstall_secure_boot_packages() {
     if [[ "AlmaLinux" != "$(rpm -q --queryformat '%{vendor}' "${kernel_package}")" ]]; then
         yum reinstall "${kernel_package}" -y
     fi
-    report_step_done "All Secure Boot related packages which were released by not AlmaLinux are reinstalled"
+    report_step_done "All Secure Boot related packages which were not released by AlmaLinux are reinstalled"
     save_status_of_stage "reinstall_secure_boot_packages"
 }
 
@@ -792,6 +908,7 @@ main() {
     #os_version="$(get_os_release_var 'VERSION_ID')"
     #os_version="${os_version:0:1}"
     assert_supported_system "${os_type}" "${os_version}" "${arch}"
+    assert_supported_filesystem
 
     read -r panel_type panel_version < <(get_panel_info)
     assert_supported_panel "${panel_type}" "${panel_version}"
@@ -804,6 +921,12 @@ main() {
 
     release_path=$(download_release_file "${release_url}" "${tmp_dir}")
     report_step_done 'Download almalinux-release package'
+    if mount | grep -q fuse.lxcfs ||
+        env | grep -q 'container=lxc' ||
+        awk '{print $1}' /proc/vz/veinfo 2>/dev/null ||
+        grep docker '/proc/1/cgroup' >/dev/null; then
+        is_container=1
+    fi
 
     assert_valid_package "${release_path}"
     assert_compatible_os_version "${os_version}" "${release_path}"
@@ -820,13 +943,18 @@ main() {
     esac
 
     backup_alternatives
+    reset_wrong_module_streams
     distro_sync
+    restore_module_streams
     restore_alternatives
     restore_issue
-    install_kernel
-    grub_update
-    reinstall_secure_boot_packages
-    add_efi_boot_record
+    # don't do this steps if we inside the lxc container
+    if [ $is_container -eq 0 ]; then
+        install_kernel
+        grub_update
+        reinstall_secure_boot_packages
+        add_efi_boot_record
+    fi
     check_custom_kernel
     save_status_of_stage "completed"
     printf '\n\033[0;32mMigration to AlmaLinux is completed\033[0m\n'
@@ -838,6 +966,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         -h | --help)
             show_usage
             exit 0
+            ;;
+        -f | --full)
+            dnf_upgrade
             ;;
         -v | --version)
             echo "${VERSION}"
